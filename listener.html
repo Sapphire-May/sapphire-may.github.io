@@ -149,28 +149,50 @@
 
       function updateReadyStatus() {
         const total = tracks.length;
+        const anyReady = Object.values(readyMap).some(Boolean);
+
+        // No tracks from mistress yet
         if (!total) {
           btnStartAudio.disabled = true;
           listenerStatus.textContent =
             "Waiting for your mistress…";
           return;
         }
-        const anyReady = Object.values(readyMap).some(Boolean);
+
+        // Tracks exist but still buffering
         if (!anyReady) {
           listenerStatus.textContent = "Preparing audio…";
           btnStartAudio.disabled = true;
-        } else if (!autoplayFailed) {
-          // Try autoplay via applyPlaybackState.
-          listenerStatus.textContent = "Preparing audio…";
-          btnStartAudio.disabled = true;
-          applyPlaybackState();
-        } else {
-          // Autoplay already failed; listener must tap.
-          btnStartAudio.disabled = false;
-          if (!userInteraction) {
+          return;
+        }
+
+        // Tracks buffered here, depends on autoplay / user interaction / playing state
+        if (!currentState.playing) {
+          // Mistress hasn't hit play yet
+          if (autoplayFailed && !userInteraction) {
             listenerStatus.textContent =
-              "Tap “Start listening” to begin audio.";
+              "Waiting for your mistress… then tap “Start listening” if it’s silent.";
+            btnStartAudio.disabled = false;
+          } else {
+            listenerStatus.textContent =
+              "Waiting for your mistress…";
+            btnStartAudio.disabled = autoplayFailed && !userInteraction
+              ? false
+              : true;
           }
+          return;
+        }
+
+        // Mistress is playing
+        if (!autoplayFailed && userInteraction) {
+          // Audio should be going; no need to spam text
+          listenerStatus.textContent = "";
+          btnStartAudio.disabled = true;
+        } else {
+          // Autoplay was blocked, they still need to tap
+          listenerStatus.textContent =
+            "Tap “Start listening” to hear your mistress.";
+          btnStartAudio.disabled = false;
         }
       }
 
@@ -234,20 +256,29 @@
 
       function applyPlaybackState() {
         const { activeTrackId, playing, loop } = currentState;
+        let anyTryingToPlay = false;
+
         tracks.forEach((track) => {
           const audio = audioMap[track.id];
           if (!audio) return;
           audio.loop = !!loop;
+
           if (
             userInteraction &&
             playing &&
             track.id === activeTrackId &&
             readyMap[track.id]
           ) {
+            anyTryingToPlay = true;
             audio
               .play()
               .then(() => {
-                // autoplay working
+                // If we're actually playing and userInteraction is allowed,
+                // clear status text (no more "preparing").
+                if (currentState.playing && userInteraction) {
+                  listenerStatus.textContent = "";
+                  btnStartAudio.disabled = true;
+                }
               })
               .catch(() => {
                 if (!autoplayFailed) {
@@ -255,13 +286,24 @@
                   userInteraction = false;
                   btnStartAudio.disabled = false;
                   listenerStatus.textContent =
-                    "Tap “Start listening” to begin audio.";
+                    "Tap “Start listening” to hear your mistress.";
                 }
               });
           } else {
             audio.pause();
           }
         });
+
+        if (!anyTryingToPlay) {
+          // Not currently playing anything
+          if (currentState.playing) {
+            // Mistress *wants* it playing but maybe it's not ready yet
+            updateReadyStatus();
+          } else {
+            // Paused state
+            updateReadyStatus();
+          }
+        }
       }
 
       function startListener(roomId) {
@@ -308,6 +350,7 @@
             seekVersion: incomingVersion
           };
           applyPlaybackState();
+          updateReadyStatus();
         });
       }
 
