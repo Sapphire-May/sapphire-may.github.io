@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Listening – Preloaded Remote Audio</title>
+    <title>Listening</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       * {
@@ -23,43 +23,19 @@
       }
       h1 {
         font-size: 1.7rem;
-        margin-bottom: 6px;
+        margin-bottom: 10px;
       }
       .subtitle {
         opacity: 0.8;
-        margin-bottom: 16px;
+        margin-bottom: 24px;
         font-size: 0.95rem;
       }
       .card {
         background: rgba(15, 23, 42, 0.9);
         border-radius: 18px;
         border: 1px solid rgba(148, 163, 184, 0.4);
-        padding: 18px 20px;
-        margin-bottom: 16px;
+        padding: 24px 24px 28px;
         box-shadow: 0 18px 40px rgba(15, 23, 42, 0.7);
-      }
-      .status {
-        font-size: 0.9rem;
-        opacity: 0.9;
-        margin-top: 6px;
-      }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: 4px 10px;
-        font-size: 0.8rem;
-        border: 1px solid rgba(148, 163, 184, 0.6);
-        gap: 6px;
-      }
-      .pill-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 999px;
-        background: #ef4444;
-      }
-      .pill-dot.online {
-        background: #22c55e;
       }
       button {
         font-family: inherit;
@@ -67,15 +43,16 @@
         border: 1px solid rgba(148, 163, 184, 0.7);
         background: rgba(15, 23, 42, 0.9);
         color: #e5e7eb;
-        padding: 9px 18px;
-        font-size: 0.95rem;
+        padding: 10px 24px;
+        font-size: 1rem;
         cursor: pointer;
         transition:
           border-color 0.15s ease,
-          transform 0.05s ease;
-        margin-top: 12px;
+          transform 0.05s ease,
+          background 0.15s ease;
+        margin-top: 8px;
       }
-      button:hover {
+      button:hover:not(:disabled) {
         border-color: rgba(148, 163, 184, 1);
         transform: translateY(-1px);
       }
@@ -84,17 +61,14 @@
         cursor: default;
         transform: none;
       }
-      .small {
-        font-size: 0.8rem;
-        opacity: 0.75;
+      .status {
+        font-size: 0.9rem;
+        opacity: 0.85;
+        margin-top: 10px;
+        min-height: 1.1em;
       }
       audio {
         display: none;
-      }
-      .bar {
-        margin-top: 10px;
-        font-size: 0.85rem;
-        opacity: 0.85;
       }
     </style>
   </head>
@@ -102,35 +76,20 @@
     <div class="app">
       <h1>Listening</h1>
       <div class="subtitle">
-        Your engineer is controlling what you hear. All the audio is preloaded
-        from this site to avoid buffering when switching tracks.
+        Press the button once when your engineer asks you to. After that you
+        just listen; everything else is controlled remotely.
       </div>
 
       <section class="card">
-        <div class="status">
-          Connection:
-          <span class="pill">
-            <span class="pill-dot" id="conn-dot"></span>
-            <span id="conn-text">Connecting…</span>
-          </span>
-        </div>
-
-        <div class="status" id="listener-status" style="margin-top: 10px">
-          Looking for the host and track list…
-        </div>
-
-        <div class="bar" id="buffer-status"></div>
-
         <button id="btn-start-audio" disabled>
           Start listening
         </button>
-
-        <div class="status small" style="margin-top: 10px">
-          Click the button once when it becomes active. After that, your
-          engineer handles all playback and switching.
+        <div class="status" id="listener-status">
+          Preparing audio…
         </div>
       </section>
 
+      <!-- Hidden audio elements will be created here -->
       <div id="audio-container" style="display: none"></div>
     </div>
 
@@ -152,12 +111,8 @@
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
 
-      const connDot = document.getElementById("conn-dot");
-      const connText = document.getElementById("conn-text");
       const listenerStatus =
         document.getElementById("listener-status");
-      const bufferStatus =
-        document.getElementById("buffer-status");
       const btnStartAudio =
         document.getElementById("btn-start-audio");
       const audioContainer =
@@ -171,16 +126,6 @@
       let readyCount = 0;
       let userInteraction = false;
 
-      function setConnectionStatus(online) {
-        if (online) {
-          connDot.classList.add("online");
-          connText.textContent = "Connected";
-        } else {
-          connDot.classList.remove("online");
-          connText.textContent = "Not connected";
-        }
-      }
-
       function getRoomIdFromQuery() {
         const params = new URLSearchParams(
           window.location.search
@@ -192,23 +137,26 @@
         return window.location.origin + "/audio/";
       }
 
-      function updateBufferStatus() {
+      function updateReadyStatus() {
         const total = tracks.length;
         if (!total) {
-          bufferStatus.textContent = "";
           btnStartAudio.disabled = true;
+          listenerStatus.textContent = "Waiting for your engineer…";
           return;
         }
-        bufferStatus.textContent =
-          "Buffered tracks: " + readyCount + " / " + total;
         const anyReady = Object.values(readyMap).some(Boolean);
         btnStartAudio.disabled = !anyReady;
+        if (!anyReady) {
+          listenerStatus.textContent = "Preparing audio…";
+        } else if (!userInteraction) {
+          listenerStatus.textContent =
+            "Ready. Press the button when asked.";
+        }
       }
 
       btnStartAudio.addEventListener("click", () => {
         userInteraction = true;
-        listenerStatus.textContent =
-          "Listening. The host controls what you hear.";
+        listenerStatus.textContent = "";
         applyPlaybackState();
       });
 
@@ -240,15 +188,13 @@
             if (!readyMap[id]) {
               readyMap[id] = true;
               readyCount++;
-              updateBufferStatus();
+              updateReadyStatus();
             }
           });
 
           audio.addEventListener("error", () => {
             listenerStatus.textContent =
-              "Error loading " +
-              filename +
-              ". Please tell your host.";
+              "There was a problem loading the audio. Please tell your engineer.";
           });
 
           audioMap[id] = audio;
@@ -258,12 +204,11 @@
 
         if (!tracks.length) {
           listenerStatus.textContent =
-            "Host has not provided any tracks yet.";
+            "Waiting for your engineer…";
         } else {
-          listenerStatus.textContent =
-            "Downloading and buffering tracks from the host’s site…";
+          listenerStatus.textContent = "Preparing audio…";
         }
-        updateBufferStatus();
+        updateReadyStatus();
       }
 
       function applyPlaybackState() {
@@ -285,18 +230,15 @@
       }
 
       function startListener(roomId) {
-        listenerStatus.textContent =
-          'Connecting as listener for room "' +
-          roomId +
-          '"…';
+        listenerStatus.textContent = "Waiting for your engineer…";
         roomRef = db.ref("rooms").child(roomId);
-        setConnectionStatus(true);
 
         roomRef.child("tracks").on("value", (snap) => {
           const val = snap.val();
           if (!val) {
             listenerStatus.textContent =
-              "No track list from host yet.";
+              "Waiting for your engineer…";
+            btnStartAudio.disabled = true;
             return;
           }
           loadTracksFromFirebase(val);
@@ -315,8 +257,7 @@
       const roomId = getRoomIdFromQuery();
       if (!roomId) {
         listenerStatus.textContent =
-          "Missing room ID in the link. Ask your host for a correct link.";
-        connText.textContent = "No room";
+          "This link is missing a room ID. Please ask your engineer for a new link.";
         btnStartAudio.disabled = true;
       } else {
         startListener(roomId);
