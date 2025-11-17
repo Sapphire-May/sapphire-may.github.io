@@ -233,6 +233,10 @@
         display: flex;
         gap: 8px;
         margin-top: 4px;
+        align-items: center;
+      }
+      input[type="range"] {
+        flex: 1;
       }
     </style>
   </head>
@@ -318,6 +322,20 @@
         </div>
 
         <div class="status" style="margin-top: 12px">
+          <label for="volume-input">Listener volume</label>
+          <div class="seek-row">
+            <input
+              id="volume-input"
+              type="range"
+              min="0"
+              max="100"
+              value="100"
+            />
+            <span class="small" id="volume-label">100%</span>
+          </div>
+        </div>
+
+        <div class="status" style="margin-top: 12px">
           <label for="seek-input">Jump all tracks to time (mm:ss or seconds)</label>
           <div class="seek-row">
             <input
@@ -398,6 +416,11 @@
         document.getElementById("active-track-label");
       const hostStatus = document.getElementById("host-status");
 
+      const volumeInput =
+        document.getElementById("volume-input");
+      const volumeLabel =
+        document.getElementById("volume-label");
+
       // State
       let currentRoomId = null;
       let roomRef = null;
@@ -415,7 +438,8 @@
         playing: false,
         loop: false,
         seekTo: null,
-        seekVersion: 0
+        seekVersion: 0,
+        volume: 1
       };
       let lastSeekVersionApplied = 0;
 
@@ -471,6 +495,26 @@
         btnToggleLoop.textContent = currentState.loop
           ? "Loop: On"
           : "Loop: Off";
+      }
+
+      function updateVolumeLabel(vol) {
+        if (!volumeLabel) return;
+        const clamped = Math.max(
+          0,
+          Math.min(1, typeof vol === "number" ? vol : 1)
+        );
+        volumeLabel.textContent =
+          Math.round(clamped * 100) + "%";
+      }
+
+      function updateVolumeUI(vol) {
+        if (!volumeInput) return;
+        const clamped = Math.max(
+          0,
+          Math.min(1, typeof vol === "number" ? vol : 1)
+        );
+        volumeInput.value = String(Math.round(clamped * 100));
+        updateVolumeLabel(clamped);
       }
 
       function updateTimeDisplay(trackId) {
@@ -568,6 +612,23 @@
           .querySelectorAll('input[type="checkbox"]')
           .forEach((cb) => (cb.checked = false));
       });
+
+      if (volumeInput) {
+        volumeInput.addEventListener("input", () => {
+          const raw = parseInt(volumeInput.value, 10);
+          const vol = isNaN(raw)
+            ? 1
+            : Math.max(0, Math.min(1, raw / 100));
+          currentState.volume = vol;
+          if (roomRef) {
+            roomRef.child("state").update({
+              volume: vol
+            });
+          }
+          updateVolumeLabel(vol);
+          applyPlaybackState();
+        });
+      }
 
       btnSendTracks.addEventListener("click", async () => {
         const rows =
@@ -672,6 +733,11 @@
           .remove()
           .catch(() => {});
 
+        // Initialize volume in state if not present
+        roomRef.child("state").update({
+          volume: currentState.volume
+        });
+
         const listenerUrl =
           window.location.origin +
           "/listener.html?room=" +
@@ -689,12 +755,16 @@
           roomId +
           '". Choose which files to send.';
 
-        // Listen for state (for loop / seek / reconnections)
+        // Listen for state (for loop / seek / reconnections / volume)
         roomRef.child("state").on("value", (snap) => {
           const val = snap.val() || {};
           const incomingVersion = val.seekVersion || 0;
           const incomingSeek =
             typeof val.seekTo === "number" ? val.seekTo : null;
+          const incomingVolume =
+            typeof val.volume === "number"
+              ? val.volume
+              : currentState.volume ?? 1;
 
           if (
             incomingSeek !== null &&
@@ -715,9 +785,11 @@
             playing: !!val.playing,
             loop: !!val.loop,
             seekTo: incomingSeek,
-            seekVersion: incomingVersion
+            seekVersion: incomingVersion,
+            volume: incomingVolume
           };
           updateLoopButton();
+          updateVolumeUI(incomingVolume);
           applyPlaybackState();
         });
 
@@ -847,6 +919,7 @@
           btnPause.disabled = true;
           btnToggleLoop.disabled = true;
           btnSeek.disabled = true;
+          if (volumeInput) volumeInput.disabled = true;
           return;
         }
         readyStatus.textContent =
@@ -856,6 +929,7 @@
         btnPause.disabled = !anyReady;
         btnToggleLoop.disabled = !anyReady;
         btnSeek.disabled = !anyReady;
+        if (volumeInput) volumeInput.disabled = !anyReady;
       }
 
       function renderTrackList() {
@@ -981,11 +1055,16 @@
       });
 
       function applyPlaybackState() {
-        const { activeTrackId, playing, loop } = currentState;
+        const { activeTrackId, playing, loop, volume } = currentState;
+        const vol =
+          typeof volume === "number"
+            ? Math.max(0, Math.min(1, volume))
+            : 1;
         tracks.forEach((track) => {
           const audio = audioMap[track.id];
           if (!audio) return;
           audio.loop = !!loop;
+          audio.volume = vol;
           if (
             playing &&
             track.id === activeTrackId &&
@@ -1004,6 +1083,9 @@
           applyPlaybackState();
         }
       });
+
+      // Set initial volume UI
+      updateVolumeUI(currentState.volume);
     </script>
   </body>
 </html>
