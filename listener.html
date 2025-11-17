@@ -78,7 +78,8 @@
     <div class="app">
       <h1>Listening</h1>
       <div class="subtitle">
-        Your mistress is in control.
+        Your mistress is in control. Audio should start on its own; if it
+        doesn’t, tap the button once and keep listening.
       </div>
 
       <section class="card">
@@ -125,7 +126,8 @@
         playing: false,
         loop: false,
         seekTo: null,
-        seekVersion: 0
+        seekVersion: 0,
+        volume: 1
       };
       const tracks = []; // { id, filename, label }
       const audioMap = {}; // id -> HTMLAudioElement
@@ -175,9 +177,8 @@
           } else {
             listenerStatus.textContent =
               "Waiting for your mistress…";
-            btnStartAudio.disabled = autoplayFailed && !userInteraction
-              ? false
-              : true;
+            btnStartAudio.disabled =
+              autoplayFailed && !userInteraction ? false : true;
           }
           return;
         }
@@ -254,13 +255,23 @@
       }
 
       function applyPlaybackState() {
-        const { activeTrackId, playing, loop } = currentState;
+        const {
+          activeTrackId,
+          playing,
+          loop,
+          volume
+        } = currentState;
+        const vol =
+          typeof volume === "number"
+            ? Math.max(0, Math.min(1, volume))
+            : 1;
         let anyTryingToPlay = false;
 
         tracks.forEach((track) => {
           const audio = audioMap[track.id];
           if (!audio) return;
           audio.loop = !!loop;
+          audio.volume = vol;
 
           if (
             userInteraction &&
@@ -326,6 +337,10 @@
           const incomingVersion = val.seekVersion || 0;
           const incomingSeek =
             typeof val.seekTo === "number" ? val.seekTo : null;
+          const incomingVolume =
+            typeof val.volume === "number"
+              ? val.volume
+              : currentState.volume ?? 1;
 
           if (
             incomingSeek !== null &&
@@ -346,7 +361,8 @@
             playing: !!val.playing,
             loop: !!val.loop,
             seekTo: incomingSeek,
-            seekVersion: incomingVersion
+            seekVersion: incomingVersion,
+            volume: incomingVolume
           };
           applyPlaybackState();
           updateReadyStatus();
@@ -370,4 +386,3 @@
     </script>
   </body>
 </html>
-
