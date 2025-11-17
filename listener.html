@@ -76,8 +76,8 @@
     <div class="app">
       <h1>Listening</h1>
       <div class="subtitle">
-        Press the button once when your engineer asks you to. After that you
-        just listen; everything else is controlled remotely.
+        Press the button once if your audio doesn’t start. After that you just
+        listen; everything else is controlled remotely.
       </div>
 
       <section class="card">
@@ -119,12 +119,20 @@
         document.getElementById("audio-container");
 
       let roomRef = null;
-      let currentState = { activeTrackId: null, playing: false };
+      let currentState = {
+        activeTrackId: null,
+        playing: false,
+        loop: false,
+        seekTo: null,
+        seekVersion: 0
+      };
       const tracks = []; // { id, filename, label }
       const audioMap = {}; // id -> HTMLAudioElement
       const readyMap = {}; // id -> boolean
       let readyCount = 0;
-      let userInteraction = false;
+      let userInteraction = true; // assume allowed, fall back if autoplay fails
+      let autoplayFailed = false;
+      let lastSeekVersion = 0;
 
       function getRoomIdFromQuery() {
         const params = new URLSearchParams(
@@ -141,16 +149,25 @@
         const total = tracks.length;
         if (!total) {
           btnStartAudio.disabled = true;
-          listenerStatus.textContent = "Waiting for your engineer…";
+          listenerStatus.textContent = "Waiting for your mistress…";
           return;
         }
         const anyReady = Object.values(readyMap).some(Boolean);
-        btnStartAudio.disabled = !anyReady;
         if (!anyReady) {
           listenerStatus.textContent = "Preparing audio…";
-        } else if (!userInteraction) {
-          listenerStatus.textContent =
-            "Ready. Press the button when asked.";
+          btnStartAudio.disabled = true;
+        } else if (!autoplayFailed) {
+          // We will try autoplay via applyPlaybackState.
+          listenerStatus.textContent = "Preparing audio…";
+          btnStartAudio.disabled = true;
+          applyPlaybackState();
+        } else {
+          // Autoplay already failed; user must press.
+          btnStartAudio.disabled = false;
+          if (!userInteraction) {
+            listenerStatus.textContent =
+              "Tap “Start listening” to begin audio.";
+          }
         }
       }
 
@@ -183,6 +200,7 @@
           const audio = document.createElement("audio");
           audio.preload = "auto";
           audio.src = base + filename;
+          audio.setAttribute("playsinline", "");
 
           audio.addEventListener("canplaythrough", () => {
             if (!readyMap[id]) {
@@ -194,7 +212,7 @@
 
           audio.addEventListener("error", () => {
             listenerStatus.textContent =
-              "There was a problem loading the audio. Please tell your engineer.";
+              "There was a problem loading the audio. Please tell your mistress.";
           });
 
           audioMap[id] = audio;
@@ -204,7 +222,7 @@
 
         if (!tracks.length) {
           listenerStatus.textContent =
-            "Waiting for your engineer…";
+            "Waiting for your mistress…";
         } else {
           listenerStatus.textContent = "Preparing audio…";
         }
@@ -212,17 +230,31 @@
       }
 
       function applyPlaybackState() {
-        const { activeTrackId, playing } = currentState;
+        const { activeTrackId, playing, loop } = currentState;
         tracks.forEach((track) => {
           const audio = audioMap[track.id];
           if (!audio) return;
+          audio.loop = !!loop;
           if (
             userInteraction &&
             playing &&
             track.id === activeTrackId &&
             readyMap[track.id]
           ) {
-            audio.play().catch(() => {});
+            audio
+              .play()
+              .then(() => {
+                // autoplay working
+              })
+              .catch(() => {
+                if (!autoplayFailed) {
+                  autoplayFailed = true;
+                  userInteraction = false;
+                  btnStartAudio.disabled = false;
+                  listenerStatus.textContent =
+                    "Tap “Start listening” to begin audio.";
+                }
+              });
           } else {
             audio.pause();
           }
@@ -230,14 +262,14 @@
       }
 
       function startListener(roomId) {
-        listenerStatus.textContent = "Waiting for your engineer…";
+        listenerStatus.textContent = "Waiting for your mistress…";
         roomRef = db.ref("rooms").child(roomId);
 
         roomRef.child("tracks").on("value", (snap) => {
           const val = snap.val();
           if (!val) {
             listenerStatus.textContent =
-              "Waiting for your engineer…";
+              "Waiting for your mistress…";
             btnStartAudio.disabled = true;
             return;
           }
@@ -246,10 +278,36 @@
 
         roomRef.child("state").on("value", (snap) => {
           const val = snap.val() || {};
-          currentState = {
+          const incomingVersion = val.seekVersion || 0;
+          const incomingSeek =
+            typeof val.seekTo === "number" ? val.seekTo : null;
+
+          const nextState = {
             activeTrackId: val.activeTrackId || null,
-            playing: !!val.playing
+            playing: !!val.playing,
+            loop: !!val.loop,
+            seekTo: incomingSeek,
+            seekVersion: incomingVersion
           };
+
+          // Apply seek if it's a new version
+          if (
+            incomingSeek !== null &&
+            incomingVersion > lastSeekVersion
+          ) {
+            lastSeekVersion = incomingVersion;
+            tracks.forEach((track) => {
+              const audio = audioMap[track.id];
+              if (!audio) return;
+              try {
+                audio.currentTime = incomingSeek;
+              } catch (e) {
+                // ignore
+              }
+            });
+          }
+
+          currentState = nextState;
           applyPlaybackState();
         });
       }
@@ -257,11 +315,17 @@
       const roomId = getRoomIdFromQuery();
       if (!roomId) {
         listenerStatus.textContent =
-          "This link is missing a room ID. Please ask your engineer for a new link.";
+          "This link is missing a room ID. Please ask your mistress for a new link.";
         btnStartAudio.disabled = true;
       } else {
         startListener(roomId);
       }
+
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && currentState.playing) {
+          applyPlaybackState();
+        }
+      });
     </script>
   </body>
 </html>
