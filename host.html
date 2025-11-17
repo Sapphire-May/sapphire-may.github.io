@@ -439,9 +439,11 @@
         loop: false,
         seekTo: null,
         seekVersion: 0,
-        volume: 1
+        volume: 1,
+        livePosition: 0
       };
       let lastSeekVersionApplied = 0;
+      let lastLiveUpdateMs = 0;
 
       function setHostConnectionStatus(online) {
         if (online) {
@@ -462,7 +464,6 @@
       }
 
       function getAudioBaseUrl() {
-        // Root site: https://amuletmaiden.github.io/
         return window.location.origin + "/audio/";
       }
 
@@ -535,6 +536,22 @@
         }
       }
 
+      function maybeSendLivePosition(trackId) {
+        if (!roomRef) return;
+        if (!currentState.playing) return;
+        if (trackId !== currentState.activeTrackId) return;
+        const audio = audioMap[trackId];
+        if (!audio) return;
+        const now = Date.now();
+        if (now - lastLiveUpdateMs < 1000) return; // throttle ~1s
+        lastLiveUpdateMs = now;
+        const pos = isFinite(audio.currentTime)
+          ? audio.currentTime
+          : 0;
+        currentState.livePosition = pos;
+        roomRef.child("state").update({ livePosition: pos });
+      }
+
       function enableEditingTime(trackId, span) {
         const audio = audioMap[trackId];
         if (!audio) return;
@@ -564,9 +581,11 @@
                 currentState.seekTo = seconds;
                 lastSeekVersionApplied =
                   currentState.seekVersion;
+                currentState.livePosition = seconds;
                 roomRef.child("state").update({
                   seekTo: seconds,
-                  seekVersion: currentState.seekVersion
+                  seekVersion: currentState.seekVersion,
+                  livePosition: seconds
                 });
               }
               return;
@@ -695,8 +714,8 @@
           (currentState.seekVersion || 0) + 1;
         currentState.seekTo = seconds;
         lastSeekVersionApplied = currentState.seekVersion;
+        currentState.livePosition = seconds;
 
-        // Apply locally
         tracks.forEach((track) => {
           const audio = audioMap[track.id];
           if (!audio) return;
@@ -708,7 +727,8 @@
         if (roomRef) {
           roomRef.child("state").update({
             seekTo: seconds,
-            seekVersion: currentState.seekVersion
+            seekVersion: currentState.seekVersion,
+            livePosition: seconds
           });
         }
 
@@ -733,7 +753,6 @@
           .remove()
           .catch(() => {});
 
-        // Initialize volume in state if not present
         roomRef.child("state").update({
           volume: currentState.volume
         });
@@ -755,7 +774,6 @@
           roomId +
           '". Choose which files to send.';
 
-        // Listen for state (for loop / seek / reconnections / volume)
         roomRef.child("state").on("value", (snap) => {
           const val = snap.val() || {};
           const incomingVersion = val.seekVersion || 0;
@@ -765,6 +783,10 @@
             typeof val.volume === "number"
               ? val.volume
               : currentState.volume ?? 1;
+          const incomingLive =
+            typeof val.livePosition === "number"
+              ? val.livePosition
+              : currentState.livePosition ?? 0;
 
           if (
             incomingSeek !== null &&
@@ -786,14 +808,14 @@
             loop: !!val.loop,
             seekTo: incomingSeek,
             seekVersion: incomingVersion,
-            volume: incomingVolume
+            volume: incomingVolume,
+            livePosition: incomingLive
           };
           updateLoopButton();
           updateVolumeUI(incomingVolume);
           applyPlaybackState();
         });
 
-        // Auto-load available files
         autoLoadAudioFiles();
       }
 
@@ -897,6 +919,7 @@
             });
             audio.addEventListener("timeupdate", () => {
               updateTimeDisplay(track.id);
+              maybeSendLivePosition(track.id);
             });
             audio.addEventListener("error", () => {
               hostStatus.textContent =
@@ -993,7 +1016,6 @@
 
           trackListEl.appendChild(row);
 
-          // Initial time display based on any existing metadata
           updateTimeDisplay(track.id);
         });
 
@@ -1008,12 +1030,23 @@
       function setActiveTrack(id) {
         if (!tracks.find((t) => t.id === id)) return;
         currentState.activeTrackId = id;
-        if (roomRef) {
+        const audio = audioMap[id];
+        if (audio && isFinite(audio.currentTime)) {
+          currentState.livePosition = audio.currentTime;
+          if (roomRef) {
+            roomRef.child("state").update({
+              activeTrackId: id,
+              livePosition: audio.currentTime,
+              playing: currentState.playing
+            });
+          }
+        } else if (roomRef) {
           roomRef.child("state").update({
             activeTrackId: id,
             playing: currentState.playing
           });
         }
+
         renderTrackList();
         if (currentState.playing) {
           hostStatus.textContent =
@@ -1029,11 +1062,19 @@
         if (!currentState.activeTrackId) {
           currentState.activeTrackId = tracks[0].id;
         }
+
+        const audio =
+          audioMap[currentState.activeTrackId] || null;
+        if (audio && isFinite(audio.currentTime)) {
+          currentState.livePosition = audio.currentTime;
+        }
+
         currentState.playing = true;
         if (roomRef) {
           roomRef.child("state").update({
             activeTrackId: currentState.activeTrackId,
-            playing: true
+            playing: true,
+            livePosition: currentState.livePosition
           });
         }
         hostStatus.textContent =
@@ -1043,10 +1084,20 @@
       });
 
       btnPause.addEventListener("click", () => {
+        const audio =
+          currentState.activeTrackId &&
+          audioMap[currentState.activeTrackId]
+            ? audioMap[currentState.activeTrackId]
+            : null;
+        if (audio && isFinite(audio.currentTime)) {
+          currentState.livePosition = audio.currentTime;
+        }
+
         currentState.playing = false;
         if (roomRef) {
           roomRef.child("state").update({
-            playing: false
+            playing: false,
+            livePosition: currentState.livePosition
           });
         }
         hostStatus.textContent =
@@ -1084,7 +1135,6 @@
         }
       });
 
-      // Set initial volume UI
       updateVolumeUI(currentState.volume);
     </script>
   </body>
