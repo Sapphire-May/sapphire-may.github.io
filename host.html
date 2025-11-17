@@ -1,286 +1,19 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Host – Preloaded Remote Audio Control</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          sans-serif;
-        background: #020617;
-        color: #e5e7eb;
-      }
-      .app {
-        max-width: 860px;
-        margin: 0 auto;
-        padding: 24px 16px 40px;
-      }
-      h1 {
-        font-size: 1.8rem;
-        margin-bottom: 4px;
-      }
-      .subtitle {
-        opacity: 0.75;
-        margin-bottom: 18px;
-        font-size: 0.95rem;
-      }
-      .card {
-        background: rgba(15, 23, 42, 0.9);
-        border-radius: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        padding: 16px 18px;
-        margin-bottom: 16px;
-        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.7);
-      }
-      .card h2 {
-        margin-top: 0;
-        font-size: 1.1rem;
-      }
-      label {
-        font-size: 0.9rem;
-        margin-bottom: 4px;
-        display: block;
-      }
-      textarea {
-        width: 100%;
-        min-height: 100px;
-        padding: 8px 10px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.5);
-        background: rgba(15, 23, 42, 0.9);
-        color: #e5e7eb;
-        font-family: monospace;
-        font-size: 0.9rem;
-        resize: vertical;
-      }
-      input[type="text"] {
-        width: 100%;
-        padding: 8px 10px;
-        border-radius: 10px;
-        border: 1px solid rgba(148, 163, 184, 0.5);
-        background: rgba(15, 23, 42, 0.9);
-        color: #e5e7eb;
-        font-family: inherit;
-        font-size: 0.95rem;
-      }
-      button {
-        font-family: inherit;
-        border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.7);
-        background: rgba(15, 23, 42, 0.9);
-        color: #e5e7eb;
-        padding: 7px 16px;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition:
-          border-color 0.15s ease,
-          transform 0.05s ease,
-          background 0.15s ease;
-      }
-      button:hover {
-        border-color: rgba(148, 163, 184, 1);
-        transform: translateY(-1px);
-      }
-      button:disabled {
-        opacity: 0.4;
-        cursor: default;
-        transform: none;
-      }
-      .button-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 8px;
-      }
-      .status {
-        font-size: 0.85rem;
-        opacity: 0.9;
-        margin-top: 6px;
-      }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: 4px 10px;
-        font-size: 0.8rem;
-        border: 1px solid rgba(148, 163, 184, 0.6);
-        gap: 6px;
-      }
-      .pill-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 999px;
-        background: #ef4444;
-      }
-      .pill-dot.online {
-        background: #22c55e;
-      }
-      .small {
-        font-size: 0.8rem;
-        opacity: 0.75;
-      }
-      .track-list {
-        margin-top: 10px;
-        border-radius: 14px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        overflow: hidden;
-      }
-      .track-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px 10px;
-        font-size: 0.9rem;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.9);
-      }
-      .track-row:last-child {
-        border-bottom: none;
-      }
-      .track-name {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 60%;
-      }
-      .track-badge {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.7);
-        padding: 2px 8px;
-        margin-right: 8px;
-      }
-      .track-badge.active {
-        border-color: #22c55e;
-        color: #bbf7d0;
-      }
-      #listener-link {
-        font-size: 0.9rem;
-        word-break: break-all;
-        margin-top: 6px;
-      }
-      .highlight {
-        color: #a5b4fc;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="app">
-      <h1>Host – Preloaded Remote Audio Control</h1>
-      <div class="subtitle">
-        Your client downloads and buffers all the files from this site. You
-        remotely tell their browser which one to play. Switching is instant
-        because everything is preloaded.
-      </div>
-
-      <!-- ROOM SETUP -->
-      <section class="card">
-        <h2>1. Choose a room ID</h2>
-        <label for="room-id">Room ID</label>
-        <input
-          id="room-id"
-          type="text"
-          placeholder="e.g. client-001"
-          autocomplete="off"
-        />
-        <div class="button-row" style="margin-top: 10px">
-          <button id="btn-start-host">Start hosting</button>
-        </div>
-        <div class="status" id="host-setup-status">
-          Pick a simple ID you can tell your client (“client-001” etc.).
-        </div>
-      </section>
-
-      <!-- TRACK LIST DEFINITION -->
-      <section class="card" id="tracks-card" style="display: none">
-        <h2>2. List the files in your <code>audio/</code> folder</h2>
-        <label for="filenames">
-          One per line. Optionally use <code>filename.mp3 | Nice label</code>.
-        </label>
-        <textarea
-          id="filenames"
-          placeholder="example:\nversion-a.mp3 | Mix A\nversion-b.mp3 | Mix B\npodcast-final.mp3"
-        ></textarea>
-        <div class="button-row">
-          <button id="btn-send-tracks">Send track list to listeners</button>
-        </div>
-        <div class="status small">
-          These files must exist in your GitHub repo under
-          <code>audio/</code>. This page assumes the URL pattern
-          <code>https://sapphire-may.github.io/audio/&lt;filename&gt;</code>.
-        </div>
-      </section>
-
-      <!-- CONNECTION / LINK -->
-      <section class="card" id="room-info" style="display: none">
-        <h2>3. Send this link to your client</h2>
-        <div class="status">
-          Connection:
-          <span class="pill">
-            <span class="pill-dot" id="host-conn-dot"></span>
-            <span id="host-conn-text">Not connected</span>
-          </span>
-        </div>
-        <div id="listener-link" class="status">
-          Listener link will appear here once hosting is ready.
-        </div>
-      </section>
-
-      <!-- PLAYBACK CONTROL -->
-      <section class="card" id="control-card" style="display: none">
-        <h2>4. Control playback</h2>
-
-        <div class="status">
-          <strong>Status:</strong>
-          <span id="ready-status">Tracks not loaded yet.</span>
-        </div>
-
-        <div class="button-row" style="margin-top: 10px">
-          <button id="btn-play" disabled>Play</button>
-          <button id="btn-pause" disabled>Pause</button>
-        </div>
-
-        <div class="status" style="margin-top: 10px">
-          <strong>Active track:</strong>
-          <span id="active-track-label">none</span>
-        </div>
-
-        <div id="track-list" class="track-list" style="display: none"></div>
-
-        <div class="status" id="host-status" style="margin-top: 10px"></div>
-      </section>
-
-      <section class="card">
-        <h2>Setup notes</h2>
-        <p class="small">
-          This page uses Firebase Realtime Database for control messages. Audio
-          is streamed directly from this site (<code>audio/&ast;.mp3</code>) to
-          each listener. Files are buffered locally on their side before
-          playback.
-        </p>
-      </section>
-    </div>
-
     <!-- Firebase compat builds -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
     <script>
-      // === FILL IN YOUR FIREBASE CONFIG HERE =================================
+      // === YOUR FIREBASE CONFIG ====================================
       const firebaseConfig = {
-  apiKey: "AIzaSyCPHd62hm96T9kcy1ZqWUhFu1WN8A0Mwj4",
-  authDomain: "audio-8c1f6.firebaseapp.com",
-  projectId: "audio-8c1f6",
-  storageBucket: "audio-8c1f6.firebasestorage.app",
-  messagingSenderId: "313094779274",
-  appId: "1:313094779274:web:8394e80c777f11fd6e9873"
-};
-      // =======================================================================
+        apiKey: "AIzaSyCPHd62hm96T9kcy1ZqWUhFu1WN8A0Mwj4",
+        authDomain: "audio-8c1f6.firebaseapp.com",
+        databaseURL: "https://audio-8c1f6-default-rtdb.firebaseio.com", // <-- important
+        projectId: "audio-8c1f6",
+        storageBucket: "audio-8c1f6.firebasestorage.app",
+        messagingSenderId: "313094779274",
+        appId: "1:313094779274:web:8394e80c777f11fd6e9873"
+      };
+      // ============================================================
 
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
@@ -288,31 +21,23 @@
       // UI elements
       const roomInput = document.getElementById("room-id");
       const btnStartHost = document.getElementById("btn-start-host");
-      const hostSetupStatus =
-        document.getElementById("host-setup-status");
+      const hostSetupStatus = document.getElementById("host-setup-status");
 
       const tracksCard = document.getElementById("tracks-card");
-      const filenamesTextarea =
-        document.getElementById("filenames");
-      const btnSendTracks =
-        document.getElementById("btn-send-tracks");
+      const filenamesTextarea = document.getElementById("filenames");
+      const btnSendTracks = document.getElementById("btn-send-tracks");
 
       const roomInfo = document.getElementById("room-info");
       const hostConnDot = document.getElementById("host-conn-dot");
       const hostConnText = document.getElementById("host-conn-text");
-      const listenerLinkEl =
-        document.getElementById("listener-link");
+      const listenerLinkEl = document.getElementById("listener-link");
 
-      const controlCard =
-        document.getElementById("control-card");
-      const readyStatus =
-        document.getElementById("ready-status");
+      const controlCard = document.getElementById("control-card");
+      const readyStatus = document.getElementById("ready-status");
       const btnPlay = document.getElementById("btn-play");
       const btnPause = document.getElementById("btn-pause");
-      const trackListEl =
-        document.getElementById("track-list");
-      const activeTrackLabel =
-        document.getElementById("active-track-label");
+      const trackListEl = document.getElementById("track-list");
+      const activeTrackLabel = document.getElementById("active-track-label");
       const hostStatus = document.getElementById("host-status");
 
       // State
@@ -345,7 +70,7 @@
       }
 
       function getAudioBaseUrl() {
-        // Now we are at root: https://sapphire-may.github.io/
+        // Root site: https://sapphire-may.github.io/
         return window.location.origin + "/audio/";
       }
 
@@ -402,8 +127,7 @@
 
       async function startHost(roomId) {
         setHostConnectionStatus(false);
-        hostSetupStatus.textContent =
-          "Connecting as host…";
+        hostSetupStatus.textContent = "Connecting as host…";
 
         roomRef = db.ref("rooms").child(roomId);
 
@@ -591,9 +315,7 @@
             track.id === activeTrackId &&
             readyMap[track.id]
           ) {
-            audio
-              .play()
-              .catch(() => {});
+            audio.play().catch(() => {});
           } else {
             audio.pause();
           }
@@ -601,5 +323,3 @@
         renderTrackList();
       }
     </script>
-  </body>
-</html>
